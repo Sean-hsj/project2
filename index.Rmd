@@ -46,76 +46,180 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Shaojie Hou, sh49854
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+In this project, I’m going to use different clinical features of human body to predict heart disease event. There will be different clinical data of people and the results of if they have heart disease in the "heart.csv". I will explore the relationship between those clinical data and the final results of their heart health condition. The data is obtained from Kaggle and updated within the most recent year.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
+library(dplyr)
+library(factoextra)
+library(GGally)
+heart = read.csv(("heart.csv"))
 
-# if your dataset needs tidying, do so here
 
-# any other code here
 ```
 
 ### Cluster Analysis
 
 ```{R}
 library(cluster)
-# clustering code here
+
+clust_dat <- heart %>% dplyr::select(Age, RestingBP, Cholesterol, HeartDisease)
+
+sil_width<-vector() 
+for(i in 2:10){  
+  kms <- kmeans(na.omit(clust_dat),centers=i) 
+  sil <- silhouette(kms$cluster,dist(clust_dat)) 
+  sil_width[i]<-mean(sil[,3]) 
+}
+
+sil_width
+heart_num <- heart %>% select_if(is.numeric) %>% mutate(HeartDisease = as.character(HeartDisease))
+heart_num
+heart_pam <- clust_dat %>% pam(k = 2)
+
+heart_num %>% mutate(cluster=as.factor(heart_pam$clustering)) %>% 
+  ggpairs(columns = 1:7, aes(color=cluster))
+
+
 ```
 
-Discussion of clustering here
-    
+**Based on the visualization above, we are able to find out that CLuster 2 is higher in Oldpeak, FastingBS and Cluster 1 is higher in cholesterol and MaxHR. The the higher Cholesterol, FastingBS, RestingBP, and Oldpeak, the higher risks in having heart disease. Since the Average Silhouette Width is between 0.71 and 1, it is a good fitness in general.**
+
+
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
 # PCA code here
+heart_num <- heart %>% select_if(is.numeric) %>% scale
+heart_pca <- princomp(heart_num, cor=T, scale = T) 
+
+summary(heart_pca, loadings = T)
+heartdf<-data.frame(PC1=heart_pca$scores[, 1],PC2=heart_pca$scores[, 2])
+ggplot(heartdf, aes(PC1, PC2)) + geom_point()
+fviz_pca_biplot(heart_pca)
+
 ```
 
-Discussions of PCA here. 
+**PC1 is the general axis for all numeric variables, and we can find out Cholesterol and MaxHR are negative which means the higher other general variables, the lower Cholesterol and MaxHR. PC2 is the axis for Age/RestingBP/Cholesterol/Oldpeak vs FastingBS. The higher score of Age/RestingBP/Cholesterol/Oldpeak in PC2 means the lower Fasting BS. PC3 is the axis for Age/RestingBP/FastingBS vs Oldpeak/HeartDisease. The higher score of Age/RestingBP/FastingBS means the Oldpeak/HeartDisease. PC4  is the axis for Age vs FastingBS/Oldpeak/HeartDisease. The higher score of age means the lower FastingBS/Oldpeak/HeartDisease. PC5 is the axis for Age/Cholesterol/FastingBS vs RestingBp/HeartDisease. The higher Age/Cholesterol/FastingBS means the lower RestingBp/HeartDisease. PC6 is the axis for Age/MaxHR/FastingBS vs Cholesterol/FastingBS/HeartDisease. The higher Age/MaxHR/FastingBS means the lower Cholesterol/FastingBS/HeartDisease. PC7 is the axis for Age/MaxHR/HeartDisease vs FastingBS/Oldpeak. The higher Age/MaxHR/HeartDisease means the lower FastingBS/Oldpeak.** 
 
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+
+y <- heart$HeartDisease
+heart
+heart_num <- heart %>% select_if(is.numeric)
+fit <- lm(HeartDisease ~., data=heart_num, family="binomial")
+fit
+score <- predict(fit, type = "response")
+score %>% round(3)
+class_diag(score,truth=heart$HeartDisease, positive=1)
+
 ```
+**The AUC is 0.8455 which is between 0.8 and 0.9 and it is good based on Rules of thumb for AUC.**
 
 ```{R}
 # cross-validation of linear classifier here
-```
+set.seed(1234)
+#split the dataset in two random parts
+one<- heart_num %>% sample_frac(.5)
+two<-heart_num %>% anti_join(one)
+fit <- lm(HeartDisease ~., data=one, family="binomial")
+probs1<-predict(fit,newdata = two,type="response")
 
-Discussion here
+diags1<-class_diag(probs1, two$HeartDisease, positive=1)
+fit<-lm(HeartDisease ~., data=two,family="binomial")
+probs2<-predict(fit,newdata = one,type="response")
+diags2<-class_diag(probs2, one$HeartDisease, positive=1)
+diags<-rbind(diags1,diags2)
+diags
+summarize_all(diags,mean)
+```
+**The AUC after cross validation is 0.83955 which is between 0.8 and 0.9 and it is good based on the Rules of thumb for AUC. Since model does similar performance in CV, there is not sign of overfitting. **
+
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
 # non-parametric classifier code here
-```
+knn_fit <- knn3(factor(HeartDisease==1,levels = c("TRUE","FALSE"))~.,data = heart_num, k = 5)
+knn_fit
+y_hat_knn <- predict(knn_fit,heart_num)
+y_hat_knn
+data.frame(y_hat_knn,names=rownames(heart))%>% arrange(names)
 
+class_diag(y_hat_knn[,1],heart_num$HeartDisease==1, positive=1)
+
+table(truth= factor(heart_num$HeartDisease==1, levels=c("TRUE","FALSE")),
+      prediction= factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE")))
+```
+**The AUC after cross validation is 0.8687 which is between 0.8 and 0.9 and it is good based on the Rules of thumb for AUC. **
 ```{R}
 # cross-validation of np classifier here
+set.seed(1234)
+k=10 #choose number of folds
+data<-heart_num[sample(nrow(heart_num)),] #randomly order rows
+folds<-cut(seq(1:nrow(heart_num)),breaks=k,labels=F) #create folds
+diags<-NULL
+for(i in 1:k){
+  ## Create training and test sets
+  train<-data[folds!=i,] 
+  test<-data[folds ==i,]
+  truth<-test$HeartDisease ## Truth labels for fold i
+  ## Train model on training set (all but fold i)
+  fit<-knn3(HeartDisease~.,data=train)
+  ## Test model on test set (fold i) 
+  probs<-predict(fit,newdata = test)[,2]
+  ## Get diagnostics for fold i
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+diags
+summarize_all(diags,mean)
 ```
-
-Discussion
+**The AUC after cross validation is 0.74231 which is between 0.7 and 0.8 and it is fair based on the Rules of thumb for AUC. Since model does much more poorly in CV, there is sign of overfitting.Th nonparametric model compared with the linear model in its cross-validation performs a worse performance.**
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
 # regression model code here
+fit<-lm(HeartDisease~.,data=heart_num)
+yhat<-predict(fit)
+yhat
+mean((heart_num$HeartDisease-yhat)^2)
+
 ```
 
 ```{R}
-# cross-validation of regression model here
+set.seed(1234)
+k=5 
+data<-heart_num[sample(nrow(heart_num)),] 
+folds<-cut(seq(1:nrow(heart_num)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+
+  fit<-lm(HeartDisease~.,data=train)
+
+  yhat<-predict(fit,newdata=test)
+
+  diags<-mean((test$HeartDisease-yhat)^2) 
+}
+
+
+MSE <- mean(diags)
+MSE
+
 ```
 
-Discussion
+**Since the MSE is similar:0.1633737 and 0.170617. There is not sign of overfitting.**
 
 ### Python 
 
@@ -124,14 +228,24 @@ library(reticulate)
 ```
 
 ```{python}
-# python code here
+import numpy as np
+import matplotlib.pyplot as plt
+heart_df = r.heart
+x = heart_df['Age']
+y = heart_df['Cholesterol']
+plt.scatter(x,y, color="blue", alpha=.5)
+plt.xlim(25, 80)
+plt.xlabel('Age')
+plt.ylabel('Cholesterol')
+plt.title('Scatterplot for Age and Cholesterol')
+plt.show()
 ```
 
-Discussion
+**According to the scatter plot above, we are able to see that the level of cholesterol is highest for people aged between 50 and 50.**
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
+**Based on the analysis we have done above, we can conclude that the result of heart disease is from various aspects. We cannot strictly predict the result from each single variable. However, we can still discover the genral correlation between each clinical index and the final result as an reference in  living habits.**
 
 
 
