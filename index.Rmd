@@ -163,20 +163,20 @@ table(truth= factor(heart_num$HeartDisease==1, levels=c("TRUE","FALSE")),
 ```{R}
 # cross-validation of np classifier here
 set.seed(1234)
-k=10 #choose number of folds
-data<-heart_num[sample(nrow(heart_num)),] #randomly order rows
-folds<-cut(seq(1:nrow(heart_num)),breaks=k,labels=F) #create folds
+k=10 
+data<-heart_num[sample(nrow(heart_num)),]
+folds<-cut(seq(1:nrow(heart_num)),breaks=k,labels=F) 
 diags<-NULL
 for(i in 1:k){
-  ## Create training and test sets
+
   train<-data[folds!=i,] 
   test<-data[folds ==i,]
-  truth<-test$HeartDisease ## Truth labels for fold i
+  truth<-test$HeartDisease 
   ## Train model on training set (all but fold i)
   fit<-knn3(HeartDisease~.,data=train)
-  ## Test model on test set (fold i) 
+
   probs<-predict(fit,newdata = test)[,2]
-  ## Get diagnostics for fold i
+
   diags<-rbind(diags,class_diag(probs,truth, positive=1))
 }
 diags
@@ -241,7 +241,7 @@ plt.title('Scatterplot for Age and Cholesterol')
 plt.show()
 ```
 
-**According to the scatter plot above, we are able to see that the level of cholesterol is highest for people aged between 50 and 50.**
+**According to the scatter plot above, we are able to see that the level of cholesterol is highest for people aged between 50 and 60.**
 
 ### Concluding Remarks
 
